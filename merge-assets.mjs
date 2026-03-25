@@ -48,9 +48,10 @@ html = html.replace(
   /IDRViewer\.config = \{"pagecount":/,
   'IDRViewer.config = {"url":"assets/","pagecount":'
 );
-html = html.replace(/(\d+)\/\1\.svg/g, "assets/$1.svg");
-html = html.replace(/url\(\\"fonts\//g, 'url(\\"assets/fonts/');
-html = html.replace(/url\('fonts\//g, "url('assets/fonts/");
+/* Paths must be relative to config url ("assets/"); IDRViewer prepends url to data= and url(" in @font-face. */
+html = html.replace(/(\d+)\/\1\.svg/g, "$1.svg");
+html = html.replace(/data=\\"assets\/(\d+)\.svg\\"/g, 'data=\\"$1.svg\\"');
+html = html.replace(/url\(\\"assets\/fonts\//g, 'url(\\"fonts/');
 
 fs.writeFileSync(path.join(root, "index.html"), html, "utf8");
 
