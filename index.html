@@ -9,20 +9,37 @@ var __IDR_ANNOT_EMBED__="{\"pages\":[{\"page\":2,\"annotations\":[{\"type\":\"Li
 var _oOpen=XMLHttpRequest.prototype.open,_oSend=XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.open=function(){this.__idr_u=arguments[1];return _oOpen.apply(this,arguments);};
 XMLHttpRequest.prototype.send=function(){
-var u=String(this.__idr_u||''),m=u.match(/(\d+)\.html/);
+var u=String(this.__idr_u||''),m=u.match(/(\d+)\.html(?=$|[?#])/);
 if(m&&window.__IDR_PAGES__[m[1]]){var s=this;setTimeout(function(){try{Object.defineProperty(s,'status',{value:200});}catch(e){}try{Object.defineProperty(s,'responseText',{value:window.__IDR_PAGES__[m[1]],configurable:true});}catch(e){}if(typeof s.onload==='function')s.onload();},0);return;}
 if(u.indexOf('search.json')>=0){var s=this;setTimeout(function(){try{Object.defineProperty(s,'status',{value:200});}catch(e){}try{Object.defineProperty(s,'responseText',{value:__IDR_SEARCH_EMBED__,configurable:true});}catch(e){}if(typeof s.onload==='function')s.onload();},0);return;}
 if(u.indexOf('annotations.json')>=0){var s=this;setTimeout(function(){try{Object.defineProperty(s,'status',{value:200});}catch(e){}try{Object.defineProperty(s,'responseText',{value:__IDR_ANNOT_EMBED__,configurable:true});}catch(e){}if(typeof s.onload==='function')s.onload();},0);return;}
 return _oSend.apply(this,arguments);
 };
+function __idrInjectIframeFromEmbed(el,v){
+if(!el||el.tagName!=='IFRAME')return false;
+var mm=String(v).match(/(\d+)\.html(?:$|[?#])/);
+if(!mm||!window.__IDR_PAGES__)return false;
+var html=window.__IDR_PAGES__[mm[1]];
+if(!html)return false;
+try{el.removeAttribute('src');}catch(e){}
+el.srcdoc=html;
+return true;
+}
 var _sa=Element.prototype.setAttribute;
 Element.prototype.setAttribute=function(n,v){
-if(n==='src'&&this.classList&&this.classList.contains('page-inner')){
-var mm=String(v).match(/^(\d+)\.html$/);
-if(mm&&window.__IDR_PAGES__[mm[1]]){try{this.removeAttribute('src');}catch(e){}this.srcdoc=window.__IDR_PAGES__[mm[1]];return;}
-}
+if(n==='src'&&__idrInjectIframeFromEmbed(this,v))return;
 return _sa.call(this,n,v);
 };
+var __ifd=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
+if(__ifd&&__ifd.set)Object.defineProperty(HTMLIFrameElement.prototype,'src',{set:function(v){if(__idrInjectIframeFromEmbed(this,v))return;__ifd.set.call(this,v);},get:__ifd.get,configurable:true,enumerable:__ifd.enumerable});
+function __idrWatchIframes(){
+var r=document.getElementById('idrviewer');
+if(!r)return void setTimeout(__idrWatchIframes,40);
+var scan=function(){r.querySelectorAll('iframe.page-inner').forEach(function(n){var s=n.getAttribute('src');if(s&&!n.srcdoc)__idrInjectIframeFromEmbed(n,s);});};
+new MutationObserver(scan).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});
+scan();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',__idrWatchIframes);else __idrWatchIframes();
 })();
 </script>
 <!-- v4.0.1 -->
