@@ -42,20 +42,23 @@
         background: rgba(17, 24, 39, 0.92);
         color: #f9fafb;
         backdrop-filter: blur(8px);
+        overflow: hidden;
       }
 
       .renderProgress {
-        position: sticky;
-        top: 0;
-        z-index: 130;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
         height: 2px;
-        width: 100%;
         background: rgba(255, 255, 255, 0.2);
+        pointer-events: none;
         transition: opacity 0.25s ease;
       }
 
       .renderProgress.done {
         opacity: 0;
+        visibility: hidden;
       }
 
       .renderProgressBar {
@@ -181,12 +184,12 @@
   </head>
   <body>
     <div class="app">
-      <div id="renderProgress" class="renderProgress" aria-hidden="true">
-        <div id="renderProgressBar" class="renderProgressBar"></div>
-      </div>
       <header class="topbar">
         <div class="title">Sổ tay TTHC</div>
         <div class="status" id="status">Loading PDF...</div>
+        <div id="renderProgress" class="renderProgress" aria-hidden="true">
+          <div id="renderProgressBar" class="renderProgressBar"></div>
+        </div>
       </header>
       <main class="content" id="viewer"></main>
       <div id="error" class="error" hidden></div>
