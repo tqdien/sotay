@@ -1,11 +1,26 @@
 # Sot tay TTHC
 
-Static handbook viewer. GitHub Pages serves index.html and the assets/ folder.
+Direct PDF handbook viewer built with PDF.js.
+
+`index.html` renders `sotay.pdf` in-browser (desktop + mobile) and keeps PDF
+hyperlinks clickable, including links that jump to other pages.
 
 Pages: https://inuris.github.io/sotay/
 
-Local preview: npx serve . (run from the repo root)
+## Local preview
 
-Publish: push index.html, assets/, and optionally .nojekyll. Enable Settings -> Pages if needed.
+Run any static server from the repo root, for example:
 
-Dev-only scripts: devtools/ (e.g. node devtools/create-page-stubs.mjs)
+```bash
+npx serve .
+```
+
+Then open the served URL in your browser.
+
+## Publish
+
+Push at least:
+
+- `index.html`
+- `sotay.pdf`
+- `.nojekyll` (optional)
