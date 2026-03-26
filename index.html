@@ -146,10 +146,13 @@
       const statusEl = document.getElementById("status");
       const viewerEl = document.getElementById("viewer");
       const errorEl = document.getElementById("error");
+      const topbarEl = document.querySelector(".topbar");
 
       const pageBlocks = [];
       let pdfDoc = null;
       let queuedTargetPage = null;
+      let currentPageNumber = 1;
+      let scrollTicking = false;
 
       function showError(message) {
         errorEl.hidden = false;
@@ -172,18 +175,70 @@
         return { pageEl, placeholder, rendered: false, rendering: false };
       }
 
-      function updateStatus(renderedCount, totalCount) {
-        if (!totalCount) {
+      function updateStatus() {
+        if (!pdfDoc) {
           statusEl.textContent = "Loading PDF...";
           return;
         }
-        statusEl.textContent = `${renderedCount}/${totalCount} pages`;
+        statusEl.textContent = `Page ${currentPageNumber}/${pdfDoc.numPages}`;
       }
 
       function getContainerScale(viewportWidth) {
         const contentWidth = viewerEl.clientWidth || window.innerWidth;
         const targetWidth = Math.max(280, contentWidth - 4);
         return targetWidth / viewportWidth;
+      }
+
+      function detectCurrentPageInView() {
+        if (!pageBlocks.length) {
+          return 1;
+        }
+
+        const headerHeight = topbarEl ? topbarEl.getBoundingClientRect().height : 0;
+        const topInset = headerHeight + 8;
+        const probeY = window.scrollY + topInset + (window.innerHeight - topInset) * 0.35;
+
+        let bestPage = 1;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (const block of pageBlocks) {
+          const pageNumber = Number(block.pageEl.dataset.pageNumber);
+          const rect = block.pageEl.getBoundingClientRect();
+          const top = rect.top + window.scrollY;
+          const bottom = top + rect.height;
+
+          if (probeY >= top && probeY <= bottom) {
+            return pageNumber;
+          }
+
+          const distance = probeY < top ? top - probeY : probeY - bottom;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestPage = pageNumber;
+          }
+        }
+
+        return bestPage;
+      }
+
+      function syncCurrentPageStatus() {
+        const nextPage = detectCurrentPageInView();
+        if (nextPage !== currentPageNumber) {
+          currentPageNumber = nextPage;
+          updateStatus();
+        }
+      }
+
+      function requestStatusSync() {
+        if (scrollTicking) {
+          return;
+        }
+
+        scrollTicking = true;
+        window.requestAnimationFrame(() => {
+          scrollTicking = false;
+          syncCurrentPageStatus();
+        });
       }
 
       async function renderPage(block) {
@@ -265,7 +320,7 @@
           block.pageEl.replaceChildren(canvas, linkLayer);
           block.rendered = true;
           block.rendering = false;
-          updateStatus(pageBlocks.filter((b) => b.rendered).length, pdfDoc.numPages);
+          requestStatusSync();
 
           if (queuedTargetPage === pageNumber) {
             queuedTargetPage = null;
@@ -295,11 +350,14 @@
           return;
         }
 
+        currentPageNumber = pageNumber;
+        updateStatus();
         queuedTargetPage = pageNumber;
         await renderPage(targetBlock);
         if (!targetBlock.rendering) {
           targetBlock.pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
           queuedTargetPage = null;
+          requestStatusSync();
         }
       }
 
@@ -355,8 +413,10 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
           rerenderVisiblePages();
+          requestStatusSync();
         }, 180);
       });
+      window.addEventListener("scroll", requestStatusSync, { passive: true });
 
       async function init() {
         try {
@@ -371,11 +431,13 @@
             pageBlocks.push(createPageShell(pageNumber));
           }
 
-          updateStatus(0, pdfDoc.numPages);
+          currentPageNumber = 1;
+          updateStatus();
           setupObservers();
 
           // Render first pages immediately to avoid blank initial viewport.
           await Promise.all(pageBlocks.slice(0, 2).map((block) => renderPage(block)));
+          requestStatusSync();
         } catch (error) {
           console.error(error);
           showError(
