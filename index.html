@@ -37,10 +37,32 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: env(safe-area-inset-top) 12px 12px;
+        padding: 8px 12px 10px;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
         background: rgba(17, 24, 39, 0.92);
         color: #f9fafb;
         backdrop-filter: blur(8px);
+      }
+
+      .renderProgress {
+        position: sticky;
+        top: 0;
+        z-index: 130;
+        height: 2px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.2);
+        transition: opacity 0.25s ease;
+      }
+
+      .renderProgress.done {
+        opacity: 0;
+      }
+
+      .renderProgressBar {
+        height: 100%;
+        width: 0%;
+        background: #60a5fa;
+        transition: width 0.2s ease;
       }
 
       .title {
@@ -114,6 +136,37 @@
         font-size: 14px;
       }
 
+      .goTopBtn {
+        position: fixed;
+        right: 14px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+        width: 38px;
+        height: 38px;
+        border: 0;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: rgba(17, 24, 39, 0.88);
+        color: #ffffff;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        z-index: 120;
+      }
+
+      .goTopBtn.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .goTopBtn svg {
+        width: 18px;
+        height: 18px;
+      }
+
       @media (min-width: 768px) {
         .topbar {
           padding-left: 16px;
@@ -128,6 +181,9 @@
   </head>
   <body>
     <div class="app">
+      <div id="renderProgress" class="renderProgress" aria-hidden="true">
+        <div id="renderProgressBar" class="renderProgressBar"></div>
+      </div>
       <header class="topbar">
         <div class="title">Sổ tay TTHC</div>
         <div class="status" id="status">Loading PDF...</div>
@@ -135,6 +191,17 @@
       <main class="content" id="viewer"></main>
       <div id="error" class="error" hidden></div>
     </div>
+    <button id="goTopBtn" class="goTopBtn" aria-label="Go to top" title="Go to top">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M6 13l6-6 6 6M12 7v10"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
 
     <script type="module">
       import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
@@ -147,11 +214,15 @@
       const viewerEl = document.getElementById("viewer");
       const errorEl = document.getElementById("error");
       const topbarEl = document.querySelector(".topbar");
+      const renderProgressEl = document.getElementById("renderProgress");
+      const renderProgressBarEl = document.getElementById("renderProgressBar");
+      const goTopBtnEl = document.getElementById("goTopBtn");
 
       const pageBlocks = [];
       let pdfDoc = null;
       let queuedTargetPage = null;
       let currentPageNumber = 1;
+      let renderedPageCount = 0;
       let scrollTicking = false;
 
       function showError(message) {
@@ -172,7 +243,22 @@
         pageEl.appendChild(placeholder);
 
         viewerEl.appendChild(pageEl);
-        return { pageEl, placeholder, rendered: false, rendering: false };
+        return { pageEl, placeholder, rendered: false, rendering: false, hasRendered: false };
+      }
+
+      function updateRenderProgress() {
+        if (!pdfDoc) {
+          return;
+        }
+
+        const ratio = Math.max(0, Math.min(1, renderedPageCount / pdfDoc.numPages));
+        renderProgressBarEl.style.width = `${ratio * 100}%`;
+
+        if (ratio >= 1) {
+          renderProgressEl.classList.add("done");
+        } else {
+          renderProgressEl.classList.remove("done");
+        }
       }
 
       function updateStatus() {
@@ -238,6 +324,11 @@
         window.requestAnimationFrame(() => {
           scrollTicking = false;
           syncCurrentPageStatus();
+          if (window.scrollY > 260) {
+            goTopBtnEl.classList.add("visible");
+          } else {
+            goTopBtnEl.classList.remove("visible");
+          }
         });
       }
 
@@ -320,6 +411,11 @@
           block.pageEl.replaceChildren(canvas, linkLayer);
           block.rendered = true;
           block.rendering = false;
+          if (!block.hasRendered) {
+            block.hasRendered = true;
+            renderedPageCount += 1;
+            updateRenderProgress();
+          }
           requestStatusSync();
 
           if (queuedTargetPage === pageNumber) {
@@ -425,6 +521,9 @@
         }, 180);
       });
       window.addEventListener("scroll", requestStatusSync, { passive: true });
+      goTopBtnEl.addEventListener("click", () => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
 
       async function init() {
         try {
@@ -440,7 +539,9 @@
           }
 
           currentPageNumber = 1;
+          renderedPageCount = 0;
           updateStatus();
+          updateRenderProgress();
           setupObservers();
 
           // Render first pages immediately to avoid blank initial viewport.
