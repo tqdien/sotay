@@ -386,6 +386,14 @@
         }
       }
 
+      async function preloadAllPagesInBackground() {
+        for (const block of pageBlocks) {
+          await renderPage(block);
+          // Yield between pages so scrolling and taps stay responsive on mobile.
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        }
+      }
+
       async function rerenderVisiblePages() {
         const viewportTop = window.scrollY;
         const viewportBottom = viewportTop + window.innerHeight;
@@ -438,6 +446,7 @@
           // Render first pages immediately to avoid blank initial viewport.
           await Promise.all(pageBlocks.slice(0, 2).map((block) => renderPage(block)));
           requestStatusSync();
+          void preloadAllPagesInBackground();
         } catch (error) {
           console.error(error);
           showError(
