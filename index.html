@@ -738,12 +738,6 @@
       async function init() {
         setupDownloadLink();
 
-        if (isAppleMobileDevice()) {
-          statusEl.textContent = "Opening handbook...";
-          renderAssetPages();
-          return;
-        }
-
         try {
           // Test PDF accessibility first
           const canAccess = await testPdfAccess(pdfPath);
