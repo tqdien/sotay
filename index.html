@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Sổ tay TTHC" />
+    <meta name="theme-color" content="#111827" />
+    <title>Sotay PDF Viewer</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #f3f4f6;
+        color: #111827;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .app {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 12px 10px;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+        background: rgba(17, 24, 39, 0.92);
+        color: #f9fafb;
+        backdrop-filter: blur(8px);
+        overflow: hidden;
+      }
+
+      .renderProgress {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.2);
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+
+      .renderProgress.done {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .renderProgressBar {
+        height: 100%;
+        width: 0%;
+        background: #60a5fa;
+        transition: width 0.2s ease;
+      }
+
+      .title {
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+
+      .status {
+        font-size: 13px;
+        opacity: 0.9;
+        white-space: nowrap;
+      }
+
+      .content {
+        width: 100%;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+
+      .page {
+        position: relative;
+        margin: 0 auto 12px;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #ffffff;
+        box-shadow: 0 3px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .page canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .linkLayer {
+        position: absolute;
+        inset: 0;
+      }
+
+      .linkLayer > a {
+        position: absolute;
+        display: block;
+        background: transparent;
+      }
+
+      .placeholder {
+        width: 100%;
+        min-height: 240px;
+        display: grid;
+        place-items: center;
+        color: #4b5563;
+        font-size: 14px;
+        background: repeating-linear-gradient(
+          -45deg,
+          #f9fafb,
+          #f9fafb 14px,
+          #f3f4f6 14px,
+          #f3f4f6 28px
+        );
+      }
+
+      .error {
+        margin: 20px auto;
+        max-width: 880px;
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .goTopBtn {
+        position: fixed;
+        right: 14px;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+        width: 38px;
+        height: 38px;
+        border: 0;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: rgba(17, 24, 39, 0.88);
+        color: #ffffff;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        z-index: 120;
+      }
+
+      .goTopBtn.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .goTopBtn svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      @media (min-width: 768px) {
+        .topbar {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .title {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="title">Sổ tay TTHC</div>
+        <div class="status" id="status">Loading PDF...</div>
+        <div id="renderProgress" class="renderProgress" aria-hidden="true">
+          <div id="renderProgressBar" class="renderProgressBar"></div>
+        </div>
+      </header>
+      <main class="content" id="viewer"></main>
+      <div id="error" class="error" hidden></div>
+    </div>
+    <button id="goTopBtn" class="goTopBtn" aria-label="Go to top" title="Go to top">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M6 13l6-6 6 6M12 7v10"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
+
+    <script type="module">
+      import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.mjs";
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs";
+
+      // Resolve PDF path dynamically to fix iOS Safari compatibility
+      // This ensures the URL is always absolute and correctly resolved regardless of deployment
+      const pdfPath = (() => {
+        const url = new URL("./sotay.pdf", window.location.href);
+        return url.href;
+      })();
+      const statusEl = document.getElementById("status");
+      const viewerEl = document.getElementById("viewer");
+      const errorEl = document.getElementById("error");
+      const topbarEl = document.querySelector(".topbar");
+      const renderProgressEl = document.getElementById("renderProgress");
+      const renderProgressBarEl = document.getElementById("renderProgressBar");
+      const goTopBtnEl = document.getElementById("goTopBtn");
+
+      const pageBlocks = [];
+      let pdfDoc = null;
+      let queuedTargetPage = null;
+      let currentPageNumber = 1;
+      let renderedPageCount = 0;
+      let scrollTicking = false;
+
+      function showError(message) {
+        errorEl.hidden = false;
+        errorEl.textContent = message;
+        statusEl.textContent = "Failed";
+        
+        // Log device and browser info for debugging iOS issues
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+        console.debug("Device Info:", { isIOS, isSafari, userAgent: navigator.userAgent, pdfPath });
+      }
+
+      function createPageShell(pageNumber) {
+        const pageEl = document.createElement("section");
+        pageEl.className = "page";
+        pageEl.id = `page-${pageNumber}`;
+        pageEl.dataset.pageNumber = String(pageNumber);
+
+        const placeholder = document.createElement("div");
+        placeholder.className = "placeholder";
+        placeholder.textContent = `Page ${pageNumber}`;
+        pageEl.appendChild(placeholder);
+
+        viewerEl.appendChild(pageEl);
+        return { pageEl, placeholder, rendered: false, rendering: false, hasRendered: false };
+      }
+
+      function updateRenderProgress() {
+        if (!pdfDoc) {
+          return;
+        }
+
+        const ratio = Math.max(0, Math.min(1, renderedPageCount / pdfDoc.numPages));
+        renderProgressBarEl.style.width = `${ratio * 100}%`;
+
+        if (ratio >= 1) {
+          renderProgressEl.classList.add("done");
+        } else {
+          renderProgressEl.classList.remove("done");
+        }
+      }
+
+      function updateStatus() {
+        if (!pdfDoc) {
+          statusEl.textContent = "Loading PDF...";
+          return;
+        }
+        statusEl.textContent = `Page ${currentPageNumber}/${pdfDoc.numPages}`;
+      }
+
+      function getContainerScale(viewportWidth) {
+        const contentWidth = viewerEl.clientWidth || window.innerWidth;
+        const targetWidth = Math.max(280, contentWidth - 4);
+        return targetWidth / viewportWidth;
+      }
+
+      function detectCurrentPageInView() {
+        if (!pageBlocks.length) {
+          return 1;
+        }
+
+        const headerHeight = topbarEl ? topbarEl.getBoundingClientRect().height : 0;
+        const topInset = headerHeight + 8;
+        const probeY = window.scrollY + topInset + (window.innerHeight - topInset) * 0.35;
+
+        let bestPage = 1;
+        let bestDistance = Number.POSITIVE_INFINITY;
+
+        for (const block of pageBlocks) {
+          const pageNumber = Number(block.pageEl.dataset.pageNumber);
+          const rect = block.pageEl.getBoundingClientRect();
+          const top = rect.top + window.scrollY;
+          const bottom = top + rect.height;
+
+          if (probeY >= top && probeY <= bottom) {
+            return pageNumber;
+          }
+
+          const distance = probeY < top ? top - probeY : probeY - bottom;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestPage = pageNumber;
+          }
+        }
+
+        return bestPage;
+      }
+
+      function syncCurrentPageStatus() {
+        const nextPage = detectCurrentPageInView();
+        if (nextPage !== currentPageNumber) {
+          currentPageNumber = nextPage;
+          updateStatus();
+        }
+      }
+
+      function requestStatusSync() {
+        if (scrollTicking) {
+          return;
+        }
+
+        scrollTicking = true;
+        window.requestAnimationFrame(() => {
+          scrollTicking = false;
+          syncCurrentPageStatus();
+          if (window.scrollY > 260) {
+            goTopBtnEl.classList.add("visible");
+          } else {
+            goTopBtnEl.classList.remove("visible");
+          }
+        });
+      }
+
+      async function renderPage(block) {
+        if (!pdfDoc || block.rendering || block.rendered) {
+          return;
+        }
+
+        block.rendering = true;
+        const pageNumber = Number(block.pageEl.dataset.pageNumber);
+
+        try {
+          const page = await pdfDoc.getPage(pageNumber);
+          const baseViewport = page.getViewport({ scale: 1 });
+          const cssScale = getContainerScale(baseViewport.width);
+          const outputScale = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+
+          const cssViewport = page.getViewport({ scale: cssScale });
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d", { alpha: false });
+
+          canvas.width = Math.floor(cssViewport.width * outputScale);
+          canvas.height = Math.floor(cssViewport.height * outputScale);
+          canvas.style.width = `${cssViewport.width}px`;
+          canvas.style.height = `${cssViewport.height}px`;
+
+          const linkLayer = document.createElement("div");
+          linkLayer.className = "linkLayer";
+          linkLayer.style.width = `${cssViewport.width}px`;
+          linkLayer.style.height = `${cssViewport.height}px`;
+
+          await page.render({
+            canvasContext: context,
+            viewport: cssViewport,
+            transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0],
+          }).promise;
+
+          const annotations = await page.getAnnotations({ intent: "display" });
+          for (const annotation of annotations) {
+            if (annotation.subtype !== "Link") {
+              continue;
+            }
+
+            const [x1, y1, x2, y2] = annotation.rect;
+            const left = Math.min(x1, x2) * cssScale;
+            const right = Math.max(x1, x2) * cssScale;
+            const bottom = Math.min(y1, y2) * cssScale;
+            const top = Math.max(y1, y2) * cssScale;
+            const width = Math.max(0, right - left);
+            const height = Math.max(0, top - bottom);
+
+            if (!width || !height) {
+              continue;
+            }
+
+            const anchor = document.createElement("a");
+            anchor.style.left = `${left}px`;
+            anchor.style.width = `${width}px`;
+            anchor.style.top = `${cssViewport.height - top}px`;
+            anchor.style.height = `${height}px`;
+            anchor.title = "Open link";
+
+            if (annotation.url) {
+              anchor.href = annotation.url;
+              anchor.target = "_blank";
+              anchor.rel = "noopener noreferrer";
+            } else if (annotation.dest) {
+              anchor.href = "#";
+              anchor.addEventListener("click", async (event) => {
+                event.preventDefault();
+                await goToDestination(annotation.dest);
+              });
+            } else {
+              continue;
+            }
+
+            linkLayer.appendChild(anchor);
+          }
+
+          block.pageEl.replaceChildren(canvas, linkLayer);
+          block.rendered = true;
+          block.rendering = false;
+          if (!block.hasRendered) {
+            block.hasRendered = true;
+            renderedPageCount += 1;
+            updateRenderProgress();
+          }
+          requestStatusSync();
+
+          if (queuedTargetPage === pageNumber) {
+            queuedTargetPage = null;
+            block.pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        } catch (error) {
+          block.rendering = false;
+          console.error(`Failed rendering page ${pageNumber}:`, error);
+        }
+      }
+
+      async function goToDestination(rawDest) {
+        if (!pdfDoc) {
+          return;
+        }
+
+        const resolvedDest =
+          typeof rawDest === "string" ? await pdfDoc.getDestination(rawDest) : rawDest;
+        if (!resolvedDest || !resolvedDest[0]) {
+          return;
+        }
+
+        const pageIndex = await pdfDoc.getPageIndex(resolvedDest[0]);
+        const pageNumber = pageIndex + 1;
+        const targetBlock = pageBlocks[pageIndex];
+        if (!targetBlock) {
+          return;
+        }
+
+        currentPageNumber = pageNumber;
+        updateStatus();
+        queuedTargetPage = pageNumber;
+        await renderPage(targetBlock);
+        if (!targetBlock.rendering) {
+          targetBlock.pageEl.scrollIntoView({ behavior: "smooth", block: "start" });
+          queuedTargetPage = null;
+          requestStatusSync();
+        }
+      }
+
+      function setupObservers() {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                const pageIndex = Number(entry.target.dataset.pageNumber) - 1;
+                const block = pageBlocks[pageIndex];
+                if (block) {
+                  renderPage(block);
+                }
+              }
+            }
+          },
+          {
+            root: null,
+            rootMargin: "1000px 0px",
+            threshold: 0.01,
+          }
+        );
+
+        for (const block of pageBlocks) {
+          observer.observe(block.pageEl);
+        }
+      }
+
+      async function preloadAllPagesInBackground() {
+        for (const block of pageBlocks) {
+          await renderPage(block);
+          // Yield between pages so scrolling and taps stay responsive on mobile.
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        }
+      }
+
+      async function rerenderVisiblePages() {
+        const viewportTop = window.scrollY;
+        const viewportBottom = viewportTop + window.innerHeight;
+
+        for (const block of pageBlocks) {
+          if (!block.rendered) {
+            continue;
+          }
+
+          const rect = block.pageEl.getBoundingClientRect();
+          const top = rect.top + window.scrollY;
+          const bottom = top + rect.height;
+          const overlaps = bottom >= viewportTop - 200 && top <= viewportBottom + 200;
+
+          if (overlaps) {
+            block.rendered = false;
+            block.pageEl.replaceChildren(block.placeholder);
+            renderPage(block);
+          }
+        }
+      }
+
+      let resizeTimer = null;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          rerenderVisiblePages();
+          requestStatusSync();
+        }, 180);
+      });
+      window.addEventListener("scroll", requestStatusSync, { passive: true });
+      goTopBtnEl.addEventListener("click", () => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+
+      async function testPdfAccess(path) {
+        try {
+          const response = await fetch(path, { method: "HEAD" });
+          return response.ok;
+        } catch (error) {
+          console.warn("PDF access test failed:", error);
+          return false;
+        }
+      }
+
+      async function init() {
+        try {
+          // Test PDF accessibility first
+          const canAccess = await testPdfAccess(pdfPath);
+          if (!canAccess) {
+            console.warn("PDF file may not be accessible. Attempting to load anyway...");
+          }
+
+          const loadingTask = pdfjsLib.getDocument({
+            url: pdfPath,
+            cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/cmaps/",
+            cMapPacked: true,
+            withCredentials: false,
+          });
+          pdfDoc = await loadingTask.promise;
+
+          for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
+            pageBlocks.push(createPageShell(pageNumber));
+          }
+
+          currentPageNumber = 1;
+          renderedPageCount = 0;
+          updateStatus();
+          updateRenderProgress();
+          setupObservers();
+
+          // Render first pages immediately to avoid blank initial viewport.
+          await Promise.all(pageBlocks.slice(0, 2).map((block) => renderPage(block)));
+          requestStatusSync();
+          void preloadAllPagesInBackground();
+        } catch (error) {
+          console.error("PDF loading error:", error);
+          console.error("Attempted PDF path:", pdfPath);
+          
+          // Retry once with different approach for iOS compatibility
+          if (error.name === "NetworkError" || error.message.includes("network")) {
+            console.log("Retrying PDF load with cache busting...");
+            try {
+              // Force reload with cache busting
+              const retryUrl = pdfPath.includes("?") ? pdfPath + "&t=" + Date.now() : pdfPath + "?t=" + Date.now();
+              const retryTask = pdfjsLib.getDocument({
+                url: retryUrl,
+                cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/cmaps/",
+                cMapPacked: true,
+                withCredentials: false,
+              });
+              pdfDoc = await retryTask.promise;
+
+              for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
+                pageBlocks.push(createPageShell(pageNumber));
+              }
+
+              currentPageNumber = 1;
+              renderedPageCount = 0;
+              updateStatus();
+              updateRenderProgress();
+              setupObservers();
+
+              await Promise.all(pageBlocks.slice(0, 2).map((block) => renderPage(block)));
+              requestStatusSync();
+              void preloadAllPagesInBackground();
+              return;
+            } catch (retryError) {
+              console.error("Retry failed:", retryError);
+            }
+          }
+
+          showError(
+            "Could not load sotay.pdf. Verify the file exists in the project root and your browser can access it."
+          );
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

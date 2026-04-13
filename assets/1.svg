@@ -1,0 +1,10 @@
+<svg viewBox="0 0 910 1286" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<clipPath id="c0_1"><path d="M-1.8 1288.2V-1.8H912.4v1290Z"/></clipPath>
+<style>
+.g0_1{fill:#FFF;}
+</style>
+</defs>
+<path d="M0 0H909.8V1286.8H0V0Z" class="g0_1"/>
+<image clip-path="url(#c0_1)" preserveAspectRatio="none" x="-1" y="-3" width="913" height="1293" href="img/1-1.jpg"/>
+</svg>

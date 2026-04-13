@@ -1,0 +1,36 @@
+# Enable CORS for all assets and the PDF file
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Accept-Language"
+</IfModule>
+
+# Enable compression for better mobile performance
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# PDF caching - allow browser caching but ensure it's fresh
+<FilesMatch "\.pdf$">
+    Header set Cache-Control "public, max-age=3600, must-revalidate"
+    Header set Content-Type "application/pdf; charset=utf-8"
+</FilesMatch>
+
+# Index file priority
+DirectoryIndex index.html
+
+# Fix for iOS Safari: ensure HTML is served with proper headers
+<Files ~ "\.html$">
+    Header set Cache-Control "public, max-age=300, must-revalidate"
+    Header set X-Content-Type-Options "nosniff"
+</Files>
+
+# Enable gzip for PDF files (helps with mobile bandwidth)
+<Files ~ "\.pdf$">
+    <IfModule mod_gzip.c>
+        mod_gzip_on Yes
+        mod_gzip_dechunk Yes
+        mod_gzip_item_include file \.pdf$
+        mod_gzip_minimum_file_size 512
+    </IfModule>
+</Files>
