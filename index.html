@@ -84,6 +84,32 @@
         white-space: nowrap;
       }
 
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .downloadBtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 32px;
+        padding: 0 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        background: rgba(255, 255, 255, 0.08);
+        color: #f9fafb;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .downloadBtn:active {
+        transform: translateY(1px);
+      }
+
       .content {
         width: 100%;
         max-width: 1080px;
@@ -196,7 +222,10 @@
     <div class="app">
       <header class="topbar">
         <div class="title">Sổ tay TTHC</div>
-        <div class="status" id="status">Loading PDF...</div>
+        <div class="actions">
+          <div class="status" id="status">Loading PDF...</div>
+          <a id="downloadBtn" class="downloadBtn" href="./sotay.pdf" download="sotay.pdf">Tải PDF</a>
+        </div>
         <div id="renderProgress" class="renderProgress" aria-hidden="true">
           <div id="renderProgressBar" class="renderProgressBar"></div>
         </div>
@@ -235,6 +264,7 @@
       const renderProgressEl = document.getElementById("renderProgress");
       const renderProgressBarEl = document.getElementById("renderProgressBar");
       const goTopBtnEl = document.getElementById("goTopBtn");
+      const downloadBtnEl = document.getElementById("downloadBtn");
       const assetPageCount = 43;
 
       const pageBlocks = [];
@@ -249,6 +279,37 @@
         const isIOS = /iPad|iPhone|iPod/.test(ua);
         const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
         return isIOS || isIPadOS;
+      }
+
+      function setupDownloadLink() {
+        downloadBtnEl.href = pdfPath;
+        downloadBtnEl.setAttribute("download", "sotay.pdf");
+
+        downloadBtnEl.addEventListener("click", async (event) => {
+          event.preventDefault();
+
+          try {
+            const response = await fetch(pdfPath, { credentials: "same-origin" });
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const tempLink = document.createElement("a");
+
+            tempLink.href = objectUrl;
+            tempLink.download = "sotay.pdf";
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            tempLink.remove();
+
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          } catch (error) {
+            console.warn("Direct download not available, opening PDF instead:", error);
+            window.open(pdfPath, "_blank", "noopener,noreferrer");
+          }
+        });
       }
 
       function resetViewerState() {
@@ -659,6 +720,8 @@
       }
 
       async function init() {
+        setupDownloadLink();
+
         if (isAppleMobileDevice()) {
           statusEl.textContent = "Opening handbook...";
           renderAssetPages();
