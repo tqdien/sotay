@@ -257,6 +257,7 @@
         const url = new URL("./sotay.pdf", window.location.href);
         return url.href;
       })();
+      const fallbackDownloadUrl = "https://github.com/tqdien/sotay/raw/main/sotay.pdf";
       const statusEl = document.getElementById("status");
       const viewerEl = document.getElementById("viewer");
       const errorEl = document.getElementById("error");
@@ -281,12 +282,24 @@
         return isIOS || isIPadOS;
       }
 
+      function isInAppWebView() {
+        const ua = navigator.userAgent || "";
+        return /FBAN|FBAV|Instagram|Line\//i.test(ua) || /; wv\)/i.test(ua);
+      }
+
       function setupDownloadLink() {
         downloadBtnEl.href = pdfPath;
         downloadBtnEl.setAttribute("download", "sotay.pdf");
+        downloadBtnEl.target = "_blank";
+        downloadBtnEl.rel = "noopener noreferrer";
 
         downloadBtnEl.addEventListener("click", async (event) => {
           event.preventDefault();
+
+          if (isInAppWebView()) {
+            window.location.href = fallbackDownloadUrl;
+            return;
+          }
 
           try {
             const response = await fetch(pdfPath, { credentials: "same-origin" });
@@ -307,7 +320,10 @@
             setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
           } catch (error) {
             console.warn("Direct download not available, opening PDF instead:", error);
-            window.open(pdfPath, "_blank", "noopener,noreferrer");
+            const popup = window.open(pdfPath, "_blank", "noopener,noreferrer");
+            if (!popup) {
+              window.location.href = fallbackDownloadUrl;
+            }
           }
         });
       }
