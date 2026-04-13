@@ -552,21 +552,72 @@
         }
       }
 
+      async function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function loadPdfWithRetry(url, retryCount = 0, maxRetries = 4) {
+        const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+        const attempt = retryCount + 1;
+        
+        try {
+          console.log(`PDF load attempt ${attempt}/${maxRetries + 1}...`);
+          statusEl.textContent = `Loading PDF (attempt ${attempt})...`;
+
+          const pdfjsOptions = {
+            url: url,
+            cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/cmaps/",
+            cMapPacked: true,
+            withCredentials: false,
+            disableAutoFetch: true,
+            disableStream: false,
+            rangeChunkSize: 65536,
+            timeout: 30000,
+            useSystemFonts: false,
+            isEvalSupported: false,
+          };
+
+          const loadingTask = pdfjsLib.getDocument(pdfjsOptions);
+          
+          // Add timeout handler
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("PDF loading timeout")), 35000);
+          });
+
+          pdfDoc = await Promise.race([loadingTask.promise, timeoutPromise]);
+          
+          console.log(`PDF loaded successfully on attempt ${attempt}`);
+          return true;
+        } catch (error) {
+          console.error(`PDF load attempt ${attempt} failed:`, error.message);
+          
+          if (retryCount < maxRetries) {
+            console.log(`Retrying in ${retryDelay}ms...`);
+            await sleep(retryDelay);
+            return loadPdfWithRetry(url, retryCount + 1, maxRetries);
+          } else {
+            throw error;
+          }
+        }
+      }
+
       async function init() {
         try {
           // Test PDF accessibility first
           const canAccess = await testPdfAccess(pdfPath);
           if (!canAccess) {
-            console.warn("PDF file may not be accessible. Attempting to load anyway...");
+            console.warn("PDF file may not be accessible. Testing with cache busting...");
           }
 
-          const loadingTask = pdfjsLib.getDocument({
-            url: pdfPath,
-            cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/cmaps/",
-            cMapPacked: true,
-            withCredentials: false,
-          });
-          pdfDoc = await loadingTask.promise;
+          // Try loading PDF with retry logic
+          try {
+            await loadPdfWithRetry(pdfPath);
+          } catch (initialError) {
+            // If initial URL fails, try with cache-busting
+            console.log("Retrying with cache busting...");
+            const bustUrl = pdfPath + (pdfPath.includes("?") ? "&" : "?") + "t=" + Date.now();
+            await loadPdfWithRetry(bustUrl);
+          }
 
           for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
             pageBlocks.push(createPageShell(pageNumber));
@@ -583,44 +634,16 @@
           requestStatusSync();
           void preloadAllPagesInBackground();
         } catch (error) {
-          console.error("PDF loading error:", error);
-          console.error("Attempted PDF path:", pdfPath);
-          
-          // Retry once with different approach for iOS compatibility
-          if (error.name === "NetworkError" || error.message.includes("network")) {
-            console.log("Retrying PDF load with cache busting...");
-            try {
-              // Force reload with cache busting
-              const retryUrl = pdfPath.includes("?") ? pdfPath + "&t=" + Date.now() : pdfPath + "?t=" + Date.now();
-              const retryTask = pdfjsLib.getDocument({
-                url: retryUrl,
-                cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/cmaps/",
-                cMapPacked: true,
-                withCredentials: false,
-              });
-              pdfDoc = await retryTask.promise;
-
-              for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
-                pageBlocks.push(createPageShell(pageNumber));
-              }
-
-              currentPageNumber = 1;
-              renderedPageCount = 0;
-              updateStatus();
-              updateRenderProgress();
-              setupObservers();
-
-              await Promise.all(pageBlocks.slice(0, 2).map((block) => renderPage(block)));
-              requestStatusSync();
-              void preloadAllPagesInBackground();
-              return;
-            } catch (retryError) {
-              console.error("Retry failed:", retryError);
-            }
-          }
+          console.error("PDF loading failed:", error);
+          console.error("PDF path:", pdfPath);
+          console.error("Error details:", {
+            name: error.name,
+            message: error.message,
+            userAgent: navigator.userAgent,
+          });
 
           showError(
-            "Could not load sotay.pdf. Verify the file exists in the project root and your browser can access it."
+            "Could not load sotay.pdf. Please check your connection or try again in a few moments."
           );
         }
       }
