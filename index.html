@@ -106,6 +106,12 @@
         height: auto;
       }
 
+      .page img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
       .linkLayer {
         position: absolute;
         inset: 0;
@@ -229,6 +235,7 @@
       const renderProgressEl = document.getElementById("renderProgress");
       const renderProgressBarEl = document.getElementById("renderProgressBar");
       const goTopBtnEl = document.getElementById("goTopBtn");
+      const assetPageCount = 43;
 
       const pageBlocks = [];
       let pdfDoc = null;
@@ -236,6 +243,23 @@
       let currentPageNumber = 1;
       let renderedPageCount = 0;
       let scrollTicking = false;
+
+      function isAppleMobileDevice() {
+        const ua = navigator.userAgent || "";
+        const isIOS = /iPad|iPhone|iPod/.test(ua);
+        const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+        return isIOS || isIPadOS;
+      }
+
+      function resetViewerState() {
+        viewerEl.replaceChildren();
+        pageBlocks.length = 0;
+        pdfDoc = null;
+        queuedTargetPage = null;
+        currentPageNumber = 1;
+        renderedPageCount = 0;
+        renderProgressBarEl.style.width = "0%";
+      }
 
       function showError(message) {
         errorEl.hidden = false;
@@ -246,6 +270,39 @@
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
         console.debug("Device Info:", { isIOS, isSafari, userAgent: navigator.userAgent, pdfPath });
+      }
+
+      function renderAssetPages() {
+        resetViewerState();
+        errorEl.hidden = true;
+
+        for (let pageNumber = 1; pageNumber <= assetPageCount; pageNumber += 1) {
+          const pageEl = document.createElement("section");
+          pageEl.className = "page";
+          pageEl.id = `page-${pageNumber}`;
+          pageEl.dataset.pageNumber = String(pageNumber);
+
+          const image = document.createElement("img");
+          image.src = `./assets/${pageNumber}.svg`;
+          image.alt = `Page ${pageNumber}`;
+          image.loading = pageNumber <= 2 ? "eager" : "lazy";
+          image.decoding = "async";
+
+          pageEl.appendChild(image);
+          viewerEl.appendChild(pageEl);
+          pageBlocks.push({
+            pageEl,
+            placeholder: null,
+            rendered: true,
+            rendering: false,
+            hasRendered: true,
+          });
+        }
+
+        renderProgressBarEl.style.width = "100%";
+        renderProgressEl.classList.add("done");
+        statusEl.textContent = `Page 1/${assetPageCount}`;
+        requestStatusSync();
       }
 
       function createPageShell(pageNumber) {
@@ -602,6 +659,12 @@
       }
 
       async function init() {
+        if (isAppleMobileDevice()) {
+          statusEl.textContent = "Opening handbook...";
+          renderAssetPages();
+          return;
+        }
+
         try {
           // Test PDF accessibility first
           const canAccess = await testPdfAccess(pdfPath);
